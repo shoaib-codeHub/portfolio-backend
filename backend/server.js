@@ -7,7 +7,6 @@ import authMiddleware from "./authmiddleware.js";
 import dotenv from "dotenv";
 import nodemailer from "nodemailer"
 
-
 dotenv.config();
 
 const app = express();
@@ -15,17 +14,34 @@ app.use(cors());
 app.use(express.json());
 const PORT = process.env.PORT || 3000;
 
+// ✅ NEW: Admin Authorization Middleware
+// This ensures that even if someone is logged in, they MUST be an admin to proceed
+const isAdmin = (req, res, next) => {
+  if (req.user && req.user.role === "admin") {
+    next();
+  } else {
+    return res.status(403).json({ message: "Forbidden: Admin access strictly required" });
+  }
+};
+
 app.get("/", (req, res) => {
   res.send("Hello world");
 });
 
-// 🔐 REGISTER
+// 🔐 REGISTER (SECURED)
 app.post("/admin/register", async (req, res) => {
   try {
-    const { username, password } = req.body;
+    // 🔥 Added admin_secret to prevent random people from registering as admins
+    const { username, password, admin_secret } = req.body;
 
     if (!username || !password) {
       return res.status(400).json({ message: "All fields required" });
+    }
+
+    // 🔥 SECURITY CHECK: Make sure only YOU can create an admin account
+    // You need to add ADMIN_REGISTRATION_SECRET=your_super_secret_key to your .env file
+    if (admin_secret !== process.env.ADMIN_REGISTRATION_SECRET) {
+      return res.status(403).json({ message: "Forbidden: Invalid admin registration secret" });
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
@@ -73,7 +89,7 @@ app.post("/admin/login", async (req, res) => {
       {
         id: admin.id,
         username: admin.username,
-        role: "admin"   // 🔥 ADD THIS
+        role: "admin"   // 🔥 Identifies this token as belonging to an admin
       },
       process.env.JWT_SECRET,
       { expiresIn: "1h" }
@@ -89,16 +105,16 @@ app.post("/admin/login", async (req, res) => {
   }
 });
 
-// 🔒 PROTECTED ROUTE
-app.get("/admin/dashboard", authMiddleware, (req, res) => {
+// 🔒 PROTECTED ROUTE (Requires login + Admin role)
+app.get("/admin/dashboard", authMiddleware, isAdmin, (req, res) => {
   res.json({
     message: "Welcome to admin dashboard",
     user: req.user
   });
 });
 
-// 🚀 CREATE PROJECT (PROTECTED)
-app.post("/api/projects", authMiddleware, async (req, res) => {
+// 🚀 CREATE PROJECT (PROTECTED - ADMIN ONLY)
+app.post("/api/projects", authMiddleware, isAdmin, async (req, res) => {
   try {
     const { title, description, tech_stack, github_link, live_link } = req.body;
 
@@ -123,33 +139,46 @@ app.post("/api/projects", authMiddleware, async (req, res) => {
   }
 });
 
+// PUBLIC ROUTE - Anyone can view projects
 app.get("/api/projects", async (req, res) => {
   const result = await db.query("SELECT * FROM projects ORDER BY id DESC");
   res.json(result.rows);
 });
 
+// 🚀 UPDATE PROJECT (PROTECTED - ADMIN ONLY)
+app.put("/api/projects/:id", authMiddleware, isAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { title, description, tech_stack, github_link, live_link } = req.body;
 
-app.put("/api/projects/:id", authMiddleware, async (req, res) => {
-  const { id } = req.params;
-  const { title, description, tech_stack, github_link, live_link } = req.body;
+    const techArray = tech_stack.split(",").map(t => t.trim());
 
-  const techArray = tech_stack.split(",").map(t => t.trim());
+    const result = await db.query(
+      `UPDATE projects 
+       SET title=$1, description=$2, tech_stack=$3, github_link=$4, live_link=$5
+       WHERE id=$6 RETURNING *`,
+      [title, description, techArray, github_link, live_link, id]
+    );
 
-  const result = await db.query(
-    `UPDATE projects 
-     SET title=$1, description=$2, tech_stack=$3, github_link=$4, live_link=$5
-     WHERE id=$6 RETURNING *`,
-    [title, description, techArray, github_link, live_link, id]
-  );
-
-  res.json(result.rows[0]);
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: err.message });
+  }
 });
-app.delete("/api/projects/:id", authMiddleware, async (req, res) => {
-  const { id } = req.params;
 
-  await db.query("DELETE FROM projects WHERE id=$1", [id]);
+// 🚀 DELETE PROJECT (PROTECTED - ADMIN ONLY)
+app.delete("/api/projects/:id", authMiddleware, isAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
 
-  res.json({ message: "Deleted successfully" });
+    await db.query("DELETE FROM projects WHERE id=$1", [id]);
+
+    res.json({ message: "Deleted successfully" });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: err.message });
+  }
 });
 
 
@@ -286,7 +315,6 @@ app.post("/contact", async (req, res) => {
     res.status(500).json({ message: err.message });
   }
 });
-
 
 app.post("/user/signup", async (req, res) => {
   try {
