@@ -31,16 +31,15 @@ app.get("/", (req, res) => {
 // 🔐 REGISTER (SECURED)
 app.post("/admin/register", async (req, res) => {
   try {
-    // 🔥 Added admin_secret to prevent random people from registering as admins
     const { username, password, admin_secret } = req.body;
 
     if (!username || !password) {
       return res.status(400).json({ message: "All fields required" });
     }
 
-    // 🔥 SECURITY CHECK: Make sure only YOU can create an admin account
-    // You need to add ADMIN_REGISTRATION_SECRET=your_super_secret_key to your .env file
-    if (admin_secret !== process.env.ADMIN_REGISTRATION_SECRET) {
+    // 🔥 FIXED SECURITY CHECK: 
+    // Prevents bypass if admin_secret is missing or .env fails to load
+    if (!admin_secret || !process.env.ADMIN_REGISTRATION_SECRET || admin_secret !== process.env.ADMIN_REGISTRATION_SECRET) {
       return res.status(403).json({ message: "Forbidden: Invalid admin registration secret" });
     }
 
