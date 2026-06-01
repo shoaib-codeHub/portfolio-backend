@@ -113,11 +113,18 @@ app.get("/admin/dashboard", authMiddleware, isAdmin, (req, res) => {
 });
 
 // 🚀 CREATE PROJECT (PROTECTED - ADMIN ONLY)
+// 🚀 CREATE PROJECT (PROTECTED - ADMIN ONLY)
 app.post("/api/projects", authMiddleware, isAdmin, async (req, res) => {
   try {
     const { title, description, tech_stack, github_link, live_link } = req.body;
 
-    const techArray = tech_stack.split(",").map(t => t.trim());
+    // ✅ FIXED LOGIC
+    let techArray = [];
+    if (Array.isArray(tech_stack)) {
+      techArray = tech_stack;
+    } else if (typeof tech_stack === "string") {
+      techArray = tech_stack.split(",").map(t => t.trim());
+    }
 
     const result = await db.query(
       `INSERT INTO projects 
@@ -145,12 +152,19 @@ app.get("/api/projects", async (req, res) => {
 });
 
 // 🚀 UPDATE PROJECT (PROTECTED - ADMIN ONLY)
+// 🚀 UPDATE PROJECT (PROTECTED - ADMIN ONLY)
 app.put("/api/projects/:id", authMiddleware, isAdmin, async (req, res) => {
   try {
     const { id } = req.params;
     const { title, description, tech_stack, github_link, live_link } = req.body;
 
-    const techArray = tech_stack.split(",").map(t => t.trim());
+    // ✅ FIXED LOGIC
+    let techArray = [];
+    if (Array.isArray(tech_stack)) {
+      techArray = tech_stack;
+    } else if (typeof tech_stack === "string") {
+      techArray = tech_stack.split(",").map(t => t.trim());
+    }
 
     const result = await db.query(
       `UPDATE projects 
